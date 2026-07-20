@@ -5,12 +5,15 @@ A Pi-hole–style **DNS sinkhole** (network-wide ad & tracker blocker) ported to
 black-hole answer (`0.0.0.0` / `::`), everything else is forwarded to an upstream resolver and
 cached — and above all, **the network never loses DNS** even if blocking fails (fail-open).
 
+**🌐 Live page & docs:** https://aguilerasmiguel.github.io/esphole/
+
+![ESPHole dashboard — the sinkhole ring (block rate), colored stat tiles, upstream health and side navigation, in the neon dark theme](docs/img/dashboard.png)
+
 > **Languages:** this README is in **English** first, **Español** below.
 > Architecture doc: [`docs/ARCHITECTURE.en.md`](docs/ARCHITECTURE.en.md) ·
 > [`docs/ARCHITECTURE.es.md`](docs/ARCHITECTURE.es.md).
-> **Project web page:** [`docs/index.html`](docs/index.html) is a self-contained, bilingual
-> landing page (neon light/dark). To publish it, enable **GitHub Pages** (repo *Settings →
-> Pages*, source branch, folder `/docs` if you place it there, or serve `release/docs/`).
+> **Project web page:** the bilingual landing at [`docs/index.html`](docs/index.html) is served
+> live via **GitHub Pages** at the link above.
 
 ---
 
