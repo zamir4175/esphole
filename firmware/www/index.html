@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESPHole</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <button type="button" class="navtoggle" id="navtoggle" aria-label="Menu">☰</button>
+  <h1>🕳️ ESPHole</h1>
+  <span id="blockpct"></span>
+  <span class="theme">
+    <button type="button" data-theme-btn aria-label="Theme">🌙</button>
+  </span>
+  <span class="lang">
+    <button type="button" data-lang="en">EN</button>
+    <button type="button" data-lang="es">ES</button>
+  </span>
+</header>
+
+<main>
+  <!-- setup: primera vez, crear contraseña -->
+  <section id="setup" hidden>
+    <h2 data-i18n="setup.title">Configura tu contraseña</h2>
+    <p class="muted" data-i18n="setup.intro">Aún no hay administrador. Crea una contraseña para proteger el panel.</p>
+    <form id="setup-form">
+      <label><span data-i18n="setup.pass">Contraseña</span> <input id="setup-pass" type="password" autocomplete="new-password" minlength="8"></label>
+      <label><span data-i18n="setup.pass2">Repite la contraseña</span> <input id="setup-pass2" type="password" autocomplete="new-password"></label>
+      <button type="submit" data-i18n="setup.submit">Crear y entrar</button>
+      <p class="msg" id="setup-msg"></p>
+    </form>
+  </section>
+
+  <!-- login -->
+  <section id="login" hidden>
+    <h2 data-i18n="login.title">Entrar</h2>
+    <form id="login-form">
+      <label><span data-i18n="login.pass">Contraseña</span> <input id="login-pass" type="password" autocomplete="current-password"></label>
+      <button type="submit" data-i18n="login.submit">Entrar</button>
+      <p class="msg" id="login-msg"></p>
+    </form>
+    <p class="muted" data-i18n="login.note">La contraseña no se envía: se usa desafío-respuesta.</p>
+  </section>
+
+  <!-- dashboard (área autenticada): sidebar + secciones -->
+  <section id="dash" hidden>
+    <div class="shell">
+      <nav class="sidebar" id="sidebar">
+        <a href="#dashboard" data-view-link="dashboard"><span class="ico">📊</span> <span data-i18n="nav.dashboard">Panel</span></a>
+        <a href="#upstreams" data-view-link="upstreams"><span class="ico">🌐</span> <span data-i18n="nav.upstreams">Resolvedores</span></a>
+        <a href="#blocklist" data-view-link="blocklist"><span class="ico">🚫</span> <span data-i18n="nav.blocklist">Lista</span></a>
+        <a href="#firmware" data-view-link="firmware"><span class="ico">⬆️</span> <span data-i18n="nav.firmware">Firmware</span></a>
+        <a href="#dhcp" data-view-link="dhcp"><span class="ico">📶</span> <span data-i18n="nav.dhcp">DHCP</span></a>
+        <a href="#dot" data-view-link="dot"><span class="ico">🔒</span> <span data-i18n="nav.dot">DoT</span></a>
+        <a href="#account" data-view-link="account"><span class="ico">👤</span> <span data-i18n="nav.account">Cuenta</span></a>
+      </nav>
+
+      <div class="content">
+        <!-- Dashboard: métricas + solo-lectura -->
+        <section data-view="dashboard">
+          <div class="hero">
+            <div class="ring" id="hero-ring">
+              <div class="ring-center">
+                <div class="ring-pct" id="hero-pct">0%</div>
+                <div class="ring-label" data-i18n="hero.blocked_label">bloqueado</div>
+              </div>
+            </div>
+            <div class="hero-stats">
+              <div><span class="hero-num" id="hero-total">0</span><span class="hero-cap" data-i18n="hero.queries">consultas</span></div>
+              <div class="hero-sub" id="hero-sub">—</div>
+            </div>
+          </div>
+          <div id="cards" class="grid"></div>
+
+          <div class="panel">
+            <h2 data-i18n="health.title">Salud de upstreams</h2>
+            <div id="salud" class="salud"></div>
+          </div>
+
+          <div class="panel">
+            <h2 data-i18n="clients.title">Clientes</h2>
+            <p class="muted" data-i18n="clients.note">Dispositivos (por IP) que han consultado desde el último arranque: cuántas consultas y cuántas bloqueadas. Los contadores son efímeros (se reinician al apagar).</p>
+            <div class="row">
+              <button id="clients-reset" class="ghost" data-i18n="clients.reset">Reiniciar contadores</button>
+              <span class="msg" id="clients-msg"></span>
+            </div>
+            <div class="tablewrap">
+              <table id="clients-tabla" class="leases" hidden>
+                <thead><tr><th>IP</th><th data-i18n="clients.col_queries">Consultas</th><th data-i18n="clients.col_blocked">Bloqueadas</th><th data-i18n="clients.col_seen">Visto</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <p id="clients-vacio" class="muted" data-i18n="clients.empty">Aún no hay clientes registrados.</p>
+          </div>
+
+          <div class="panel">
+            <h2 data-i18n="cache.title">Caché</h2>
+            <div class="row">
+              <span id="cacheinfo" class="muted">—</span>
+              <button id="flush-cache" class="ghost" data-i18n="cache.flush">Vaciar caché</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Upstreams -->
+        <section data-view="upstreams" hidden>
+          <div class="panel">
+            <h2 data-i18n="upstream.title">Resolvedores upstream</h2>
+            <p class="muted" data-i18n="upstream.note">Una IP (v4 o v6) por línea. Guardar reinicia el dispositivo.</p>
+            <textarea id="upstreams" rows="4" spellcheck="false"></textarea>
+            <div class="row">
+              <button id="save-upstreams" data-i18n="upstream.save">Guardar y reiniciar</button>
+              <span class="msg" id="cfg-msg"></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Blocklist -->
+        <section data-view="blocklist" hidden>
+          <div class="panel">
+            <h2 data-i18n="blocklist.title">Lista de bloqueo</h2>
+            <div class="row"><strong id="bl-count" class="muted">—</strong></div>
+            <p class="muted" data-i18n="blocklist.note">URL de la lista (formato HOSTS). Actualizar la descarga y aplica; durante ~1 min el bloqueo queda inactivo (la resolución sigue).</p>
+            <input id="bl-url" type="url" spellcheck="false" placeholder="https://…/hosts">
+            <div class="row">
+              <button id="bl-update" data-i18n="blocklist.update">Actualizar lista</button>
+              <span class="msg" id="bl-status"></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Firmware -->
+        <section data-view="firmware" hidden>
+          <div class="panel">
+            <h2 data-i18n="firmware.title">Firmware</h2>
+            <div class="row"><strong id="fw-version" class="muted">—</strong></div>
+            <p class="muted" data-i18n="firmware.note">URL https de la imagen (.bin). Actualizar descarga, valida y reinicia en la versión nueva; si no arranca bien, vuelve sola a la anterior.</p>
+            <input id="fw-url" type="url" spellcheck="false" placeholder="https://…/esphole.bin">
+            <div class="row">
+              <button id="fw-update" data-i18n="firmware.update">Actualizar firmware</button>
+              <span class="msg" id="fw-status"></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- DHCP -->
+        <section data-view="dhcp" hidden>
+          <div class="panel">
+            <h2 data-i18n="dhcp.title">Servidor DHCP</h2>
+            <p class="muted" data-i18n="dhcp.note">Reparte IPs a la LAN entregando ESPHole como DNS (bloqueo automático para todos). Opcional.</p>
+            <label class="check"><input type="checkbox" id="dhcp-en"> <span data-i18n="dhcp.enable">Activar servidor DHCP</span></label>
+            <p id="dhcp-warn" class="warn" hidden data-i18n="dhcp.warn">⚠️ Debes desactivar el DHCP de tu router antes de activar este: no puede haber dos servidores DHCP en la misma red.</p>
+            <div class="grid2">
+              <label><span data-i18n="dhcp.range_from">Rango desde</span> <input id="dhcp-ps" type="text" placeholder="192.168.1.100"></label>
+              <label><span data-i18n="dhcp.range_to">Rango hasta</span> <input id="dhcp-pe" type="text" placeholder="192.168.1.200"></label>
+              <label><span data-i18n="dhcp.lease">Concesión (s)</span> <input id="dhcp-lt" type="number" placeholder="7200"></label>
+            </div>
+            <div class="row">
+              <button id="dhcp-save" data-i18n="common.save">Guardar</button>
+              <span class="msg" id="dhcp-msg"></span>
+            </div>
+            <div class="tablewrap">
+              <table id="dhcp-leases" class="leases" hidden>
+                <thead><tr><th>IP</th><th>MAC</th><th data-i18n="dhcp.col_name">Nombre</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- DoT -->
+        <section data-view="dot" hidden>
+          <div class="panel">
+            <h2 data-i18n="dot.title">DNS cifrado (DoT)</h2>
+            <p class="muted" data-i18n="dot.note">Reenvía tus consultas al resolvedor por DNS over TLS (RFC 7858, puerto 853): nadie en la red ve qué dominios consultas. Si el resolvedor cifrado falla, la consulta devuelve SERVFAIL (nunca cae a texto plano). Opcional.</p>
+            <label class="check"><input type="checkbox" id="dot-en"> <span data-i18n="dot.enable">Activar DNS cifrado (DoT)</span></label>
+            <p class="muted" data-i18n="dot.sni_note">Hostname (SNI) de cada upstream, en el mismo orden que los resolvedores. Debe casar el certificado del resolvedor.</p>
+            <div class="grid2">
+              <label>SNI 1 <input id="dot-sni0" type="text" placeholder="one.one.one.one"></label>
+              <label>SNI 2 <input id="dot-sni1" type="text" placeholder="dns.quad9.net"></label>
+              <label>SNI 3 <input id="dot-sni2" type="text" placeholder="one.one.one.one"></label>
+              <label>SNI 4 <input id="dot-sni3" type="text" placeholder="dns.quad9.net"></label>
+            </div>
+            <div class="row">
+              <button id="dot-save" data-i18n="common.save">Guardar</button>
+              <span class="msg" id="dot-msg"></span>
+            </div>
+            <p id="dot-estado" class="muted">—</p>
+          </div>
+        </section>
+
+        <!-- Account -->
+        <section data-view="account" hidden>
+          <div class="panel">
+            <h2 data-i18n="account.title">Cuenta</h2>
+            <div class="row">
+              <button id="pw-toggle" class="ghost" data-i18n="account.changepw">Cambiar contraseña</button>
+              <button id="logout" class="ghost" data-i18n="account.logout">Cerrar sesión</button>
+            </div>
+            <form id="pw-form" hidden>
+              <label><span data-i18n="account.pw_cur">Contraseña actual</span> <input id="pw-cur" type="password" autocomplete="current-password"></label>
+              <label><span data-i18n="account.pw_new">Nueva contraseña</span> <input id="pw-new" type="password" autocomplete="new-password" minlength="8"></label>
+              <label><span data-i18n="account.pw_new2">Repite la nueva</span> <input id="pw-new2" type="password" autocomplete="new-password"></label>
+              <button type="submit" data-i18n="account.pw_save">Guardar contraseña</button>
+              <p class="msg" id="pw-msg"></p>
+            </form>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/i18n.js"></script>
+<script src="/theme.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

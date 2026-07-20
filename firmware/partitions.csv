@@ -1,0 +1,13 @@
+# ESPHole — flash de 16 MB con OTA (spec 005). Dos ranuras de app + otadata para la
+# vuelta atrás automática. Offsets automáticos (campo vacío ⇒ el generador alinea).
+# La lista de bloqueo vive en partición propia (tools/gen_blocklist.py, ahora 0x420000):
+# actualizar la lista o el firmware no se pisan entre sí.
+# Name,    Type, SubType, Offset, Size
+nvs,       data, nvs,     ,       0x6000
+otadata,   data, ota,     ,       0x2000
+phy_init,  data, phy,     ,       0x1000
+ota_0,     app,  ota_0,   ,       2M
+ota_1,     app,  ota_1,   ,       2M
+blocklist, 0x40, 0x00,    ,       6M
+# Interfaz web de administración (spec 003), empaquetada por spiffsgen en el build.
+www,       data, spiffs,  ,       1M

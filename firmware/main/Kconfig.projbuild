@@ -1,0 +1,52 @@
+menu "ESPHole"
+
+    config ESPHOLE_WIFI_SSID
+        string "SSID de la red Wi-Fi"
+        default ""
+        help
+            Credenciales de desarrollo (T023). El aprovisionamiento por
+            portal cautivo es la spec 002. Los valores reales viven en
+            firmware/sdkconfig, que NO se versiona.
+
+    config ESPHOLE_WIFI_PASSWORD
+        string "Contraseña de la red Wi-Fi"
+        default ""
+
+    config ESPHOLE_BLOCKLIST_URL
+        string "URL por defecto de la lista de bloqueo"
+        default "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+        help
+            URL de la lista en formato HOSTS que se descarga cuando el
+            usuario aún no ha configurado otra (spec 004). Se puede cambiar
+            en caliente desde el panel web; este valor es solo el defecto de
+            fábrica.
+
+    config ESPHOLE_OTA_ALLOW_INSECURE_HTTP
+        bool "Permitir OTA por HTTP sin cifrar (solo dev/LAN)"
+        default n
+        help
+            Por defecto la actualización de firmware (spec 005) EXIGE https con
+            verificación de CAs: sin firma de imagen, un HTTP en claro dejaría que
+            un atacante en la LAN inyecte firmware arbitrario (ejecución de código).
+            Activa esto SOLO para pruebas en una LAN de confianza (servir el .bin
+            desde un http.server local). En producción déjalo desactivado.
+
+    config ESPHOLE_OTA_SELFTEST_PANIC
+        bool "Imagen de autotest: aborta al arrancar a prueba (prueba el rollback)"
+        default n
+        help
+            SOLO para verificar la vuelta atrás automática (OB-08): con esto, si la
+            imagen arranca en estado PENDING_VERIFY (recién instalada por OTA),
+            aborta a propósito, de modo que el bootloader revierta a la versión
+            anterior. No panica en un arranque normal (flasheo directo por USB),
+            así que no brickea. Nunca en producción.
+
+    config ESPHOLE_BENCH
+        bool "Modo benchmark de cotas (T029)"
+        default n
+        help
+            Al arrancar, en vez de la lista real genera 200k dominios
+            sintéticos, mide el peor caso de lookup en PSRAM (CB-60) y
+            reporta heap/pila por serial. Solo para medición; no en producción.
+
+endmenu

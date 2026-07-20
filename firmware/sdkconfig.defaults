@@ -1,0 +1,25 @@
+# ESPHole — configuración base (plan.md / research.md R1)
+CONFIG_IDF_TARGET="esp32s3"
+
+# Flash 16 MB con tabla de particiones propia (dos ranuras OTA, spec 005)
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# OTA con vuelta atrás automática (spec 005): la imagen nueva arranca a prueba y
+# se revierte si no se confirma (esp_ota_mark_app_valid_cancel_rollback).
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# PSRAM octal de 8 MB (ESP32-S3-N16R8)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# CPU a 240 MHz
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# R1: envíos a lwIP desde otras tareas con core-locking
+CONFIG_LWIP_TCPIP_CORE_LOCKING=y
+
+# Pila del hilo tcpip: el camino rapido DNS corre inline en sus callbacks
+CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=6144

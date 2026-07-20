@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESPHole — DNS sinkhole on ESP32-S3</title>
+<meta name="description" content="A fail-open DNS sinkhole (ad & tracker blocker) on the ESP32-S3. RFC-correct, DoT fail-closed, OTA with rollback. MIT.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%95%B3%EF%B8%8F%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+<style>
+  /* ESPHole landing — misma identidad que el panel (neón sobre oscuro + claro). */
+  :root {
+    --bg:#0b0f14; --surface:#121821; --surface-2:#1a2330; --line:#26313f;
+    --fg:#e6edf3; --muted:#8193a6;
+    --green:#39ff14; --cyan:#22d3ee; --magenta:#ff2e97; --amber:#ffb020; --red:#ff4d5e;
+    --glow:0 0 16px; --shadow:0 10px 40px rgba(0,0,0,.4);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --btn-fg:#07110a;
+  }
+  @media (prefers-color-scheme: light){ :root:not([data-theme]){
+    --bg:#f6f8fb; --surface:#fff; --surface-2:#eef2f7; --line:#dbe3ec;
+    --fg:#0d1520; --muted:#5a6b7d;
+    --green:#16a34a; --cyan:#0891b2; --magenta:#db2777; --amber:#d97706; --red:#e11d48;
+    --glow:0 0 0; --shadow:0 8px 30px rgba(20,40,80,.10); --btn-fg:#fff;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#0b0f14; --surface:#121821; --surface-2:#1a2330; --line:#26313f;
+    --fg:#e6edf3; --muted:#8193a6;
+    --green:#39ff14; --cyan:#22d3ee; --magenta:#ff2e97; --amber:#ffb020; --red:#ff4d5e;
+    --glow:0 0 16px; --shadow:0 10px 40px rgba(0,0,0,.4); --btn-fg:#07110a;
+  }
+  :root[data-theme="light"]{
+    --bg:#f6f8fb; --surface:#fff; --surface-2:#eef2f7; --line:#dbe3ec;
+    --fg:#0d1520; --muted:#5a6b7d;
+    --green:#16a34a; --cyan:#0891b2; --magenta:#db2777; --amber:#d97706; --red:#e11d48;
+    --glow:0 0 0; --shadow:0 8px 30px rgba(20,40,80,.10); --btn-fg:#fff;
+  }
+  *{box-sizing:border-box;}
+  html{color-scheme:dark light;}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.6;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;}
+  .wrap{max-width:60rem;margin:0 auto;padding:0 1.25rem;}
+  a{color:var(--cyan);}
+  .es{display:none;}
+  body.lang-es .es{display:revert;}
+  body.lang-es .en{display:none;}
+
+  /* topbar */
+  .top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:1rem;
+    padding:.7rem 1.25rem;background:color-mix(in srgb,var(--bg) 82%,transparent);
+    border-bottom:1px solid var(--line);backdrop-filter:blur(8px);}
+  .brand{font-family:var(--mono);font-weight:700;font-size:1.05rem;letter-spacing:.02em;}
+  .top .sp{margin-left:auto;}
+  .toggle{display:inline-flex;gap:.2rem;}
+  .toggle button{background:transparent;border:1px solid var(--line);color:var(--muted);
+    font-family:var(--mono);font-size:.75rem;padding:.15rem .5rem;border-radius:7px;cursor:pointer;}
+  .toggle button.on{color:var(--fg);border-color:var(--green);
+    box-shadow:var(--glow) color-mix(in srgb,var(--green) 45%,transparent);}
+  .toggle button:hover{color:var(--fg);}
+
+  /* hero */
+  .hero{display:flex;align-items:center;gap:2.4rem;flex-wrap:wrap;padding:3.2rem 0 2.4rem;}
+  .hero .copy{flex:1 1 20rem;min-width:0;}
+  .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--green);margin:0 0 .8rem;}
+  h1{font-family:var(--mono);font-weight:700;font-size:clamp(2rem,5vw,3rem);line-height:1.05;
+    margin:0 0 .8rem;text-wrap:balance;letter-spacing:-.01em;}
+  h1 .hl{color:var(--green);}
+  .lede{font-size:1.08rem;color:var(--fg);margin:0 0 1.3rem;max-width:34rem;}
+  .badges{display:flex;flex-wrap:wrap;gap:.5rem;}
+  .badge{font-family:var(--mono);font-size:.72rem;padding:.28rem .6rem;border-radius:999px;
+    border:1px solid var(--line);color:var(--muted);}
+  .badge b{color:var(--fg);font-weight:600;}
+
+  @property --pct{syntax:"<number>";inherits:false;initial-value:0;}
+  .ring{--pct:0;width:210px;height:210px;flex:none;border-radius:50%;display:grid;place-items:center;
+    position:relative;transition:--pct 1.4s cubic-bezier(.2,.8,.2,1);
+    background:conic-gradient(var(--green) calc(var(--pct)*1%),var(--line) 0);
+    box-shadow:var(--glow) color-mix(in srgb,var(--green) 45%,transparent);}
+  .ring::before{content:"";position:absolute;inset:16px;border-radius:50%;background:var(--bg);}
+  .ring .in{position:relative;text-align:center;}
+  .ring .pct{font-family:var(--mono);font-weight:700;font-size:2.6rem;color:var(--green);line-height:1;}
+  .ring .cap{font-family:var(--mono);font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--muted);margin-top:.3rem;}
+
+  /* sections */
+  section{padding:2.4rem 0;border-top:1px solid var(--line);}
+  .kicker{font-family:var(--mono);font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 .5rem;}
+  h2{font-size:1.5rem;margin:0 0 1.1rem;text-wrap:balance;}
+  p.muted{color:var(--muted);}
+
+  /* feature grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:.9rem;}
+  .feat{--c:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:1.1rem;position:relative;overflow:hidden;}
+  .feat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c);
+    box-shadow:var(--glow) var(--c);}
+  .feat h3{font-family:var(--mono);font-size:.95rem;margin:0 0 .35rem;color:var(--c);}
+  .feat p{margin:0;font-size:.9rem;color:var(--muted);}
+  .c-green{--c:var(--green);} .c-cyan{--c:var(--cyan);} .c-amber{--c:var(--amber);}
+  .c-magenta{--c:var(--magenta);} .c-red{--c:var(--red);}
+
+  /* architecture svg */
+  .diagram{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:1.2rem;overflow-x:auto;}
+  .diagram svg{display:block;width:100%;min-width:640px;height:auto;}
+
+  /* status table */
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;}
+  table{width:100%;border-collapse:collapse;font-size:.9rem;min-width:34rem;}
+  th,td{text-align:left;padding:.6rem .8rem;border-bottom:1px solid var(--line);}
+  th{font-family:var(--mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
+  td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  tr:last-child td{border-bottom:0;}
+  tr.warnrow{background:color-mix(in srgb,var(--amber) 10%,transparent);}
+  .st{font-family:var(--mono);font-size:.78rem;white-space:nowrap;}
+  .st.ok{color:var(--green);} .st.warn{color:var(--amber);}
+
+  .callout{margin-top:1.1rem;background:color-mix(in srgb,var(--amber) 12%,transparent);
+    border:1px solid color-mix(in srgb,var(--amber) 40%,transparent);border-radius:12px;padding:1rem 1.2rem;}
+  .callout b{color:var(--amber);}
+
+  ul.clean{list-style:none;padding:0;margin:0;display:grid;gap:.6rem;}
+  ul.clean li{padding-left:1.4rem;position:relative;color:var(--muted);}
+  ul.clean li::before{content:"›";position:absolute;left:0;color:var(--green);font-family:var(--mono);font-weight:700;}
+  ul.clean li b{color:var(--fg);}
+
+  pre{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:1rem 1.2rem;
+    overflow-x:auto;font-family:var(--mono);font-size:.82rem;color:var(--fg);}
+  pre .cm{color:var(--muted);}
+
+  .chips{display:flex;flex-wrap:wrap;gap:.5rem;}
+  .chip{font-family:var(--mono);font-size:.78rem;padding:.3rem .7rem;border-radius:999px;
+    border:1px solid var(--line);color:var(--muted);}
+
+  footer{border-top:1px solid var(--line);padding:2rem 0 3rem;color:var(--muted);font-size:.85rem;}
+  footer .mono{font-family:var(--mono);}
+
+  @media (max-width:640px){ .ring{width:170px;height:170px;} .hero{gap:1.6rem;} }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important;} }
+</style>
+
+<div class="top">
+  <span class="brand">🕳️ ESPHole</span>
+  <span class="sp"></span>
+  <span class="toggle" id="lang">
+    <button data-l="en" class="on">EN</button><button data-l="es">ES</button>
+  </span>
+  <span class="toggle" id="theme"><button data-theme-btn>🌙</button></span>
+</div>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="copy">
+      <p class="eyebrow">ESP32-S3 · DNS SINKHOLE</p>
+      <h1><span class="en">Ad-blocking DNS<br>that <span class="hl">never goes dark</span></span><span class="es">DNS con bloqueo<br>que <span class="hl">nunca se apaga</span></span></h1>
+      <p class="lede">
+        <span class="en">A Pi-hole–style sinkhole on a tiny ESP32-S3. Blocklisted domains die with a black-hole answer; everything else is forwarded and cached — and if blocking ever fails, the network keeps resolving. <b>Fail-open by design.</b></span>
+        <span class="es">Un sinkhole estilo Pi-hole en un diminuto ESP32-S3. Los dominios en lista mueren con una respuesta de agujero negro; el resto se reenvía y se cachea — y si el bloqueo falla, la red sigue resolviendo. <b>Fail-open por diseño.</b></span>
+      </p>
+      <div class="badges">
+        <span class="badge"><b>RFC 1035</b> + EDNS0</span>
+        <span class="badge">DoT <b>fail-closed</b></span>
+        <span class="badge">OTA + <b>rollback</b></span>
+        <span class="badge"><b>MIT</b></span>
+      </div>
+    </div>
+    <div class="ring" id="ring">
+      <div class="in">
+        <div class="pct" id="ringpct">0%</div>
+        <div class="cap"><span class="en">blocked</span><span class="es">bloqueado</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <section style="border-top:0;">
+    <p class="kicker"><span class="en">What it is</span><span class="es">Qué es</span></p>
+    <h2><span class="en">A whole ad-blocker in 2 MB of firmware</span><span class="es">Un bloqueador entero en 2 MB de firmware</span></h2>
+    <p class="muted" style="max-width:44rem;">
+      <span class="en">Every DNS query on your LAN passes through ESPHole. It runs the full fast path — parse, block, cache — inside a single non-blocking thread, so resolution stays instant while TLS, HTTP and OTA happen off to the side. Built spec-by-spec with strict test-driven development and on-hardware verification.</span>
+      <span class="es">Cada consulta DNS de tu red pasa por ESPHole. Ejecuta la ruta rápida completa — parsear, bloquear, cachear — en un solo hilo que nunca bloquea, así la resolución es instantánea mientras el TLS, el HTTP y el OTA ocurren aparte. Construido spec a spec con TDD estricto y verificación en hardware.</span>
+    </p>
+  </section>
+
+  <section>
+    <p class="kicker"><span class="en">Features</span><span class="es">Funcionalidades</span></p>
+    <h2><span class="en">Ten specs, one appliance</span><span class="es">Diez specs, un aparato</span></h2>
+    <div class="grid">
+      <div class="feat c-cyan"><h3><span class="en">DNS core</span><span class="es">Núcleo DNS</span></h3><p><span class="en">UDP + TCP :53, A/AAAA suffix blocking, upstream failover, cache, rate-limiting.</span><span class="es">UDP + TCP :53, bloqueo A/AAAA por sufijo, failover, caché, límite de tasa.</span></p></div>
+      <div class="feat c-green"><h3><span class="en">Fail-open</span><span class="es">Fail-open</span></h3><p><span class="en">The LAN keeps resolving even if blocking, cache or every upstream fails.</span><span class="es">La red sigue resolviendo aunque fallen el bloqueo, la caché o todos los upstreams.</span></p></div>
+      <div class="feat c-magenta"><h3>DoT</h3><p><span class="en">Encrypted upstream over DNS-over-TLS with a fail-closed guarantee — never plaintext.</span><span class="es">Upstream cifrado por DNS-over-TLS con garantía fail-closed — nunca en claro.</span></p></div>
+      <div class="feat c-amber"><h3><span class="en">Blocklists from URL</span><span class="es">Listas desde URL</span></h3><p><span class="en">Download a HOSTS list over HTTPS and rebuild in place — no reboot.</span><span class="es">Descarga una lista HOSTS por HTTPS y la reconstruye en caliente — sin reboot.</span></p></div>
+      <div class="feat c-cyan"><h3><span class="en">OTA + rollback</span><span class="es">OTA + rollback</span></h3><p><span class="en">HTTPS firmware updates that revert automatically if the new build won't boot.</span><span class="es">Actualizaciones HTTPS que vuelven atrás solas si la nueva no arranca.</span></p></div>
+      <div class="feat c-green"><h3><span class="en">Web admin + API</span><span class="es">Web + API</span></h3><p><span class="en">Dashboard, config, health. Challenge-response login — the password never travels.</span><span class="es">Panel, config, salud. Login desafío-respuesta — la contraseña nunca viaja.</span></p></div>
+      <div class="feat c-cyan"><h3><span class="en">Per-client stats</span><span class="es">Stats por cliente</span></h3><p><span class="en">Which IPs query, how much, how many blocked — ephemeral, bounded.</span><span class="es">Qué IPs consultan, cuánto, cuántas bloqueadas — efímero, acotado.</span></p></div>
+      <div class="feat c-amber"><h3>DHCP <span style="opacity:.7">⚠️</span></h3><p><span class="en">Optional DHCP server. Implemented, but not yet tested end-to-end (see status).</span><span class="es">Servidor DHCP opcional. Implementado, pero aún sin probar de extremo a extremo (ver estado).</span></p></div>
+      <div class="feat c-green"><h3><span class="en">Bilingual + themes</span><span class="es">Bilingüe + temas</span></h3><p><span class="en">Full EN/ES UI and a light/dark neon redesign that follows your system.</span><span class="es">Interfaz EN/ES completa y un rediseño neón claro/oscuro que sigue a tu sistema.</span></p></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker"><span class="en">Architecture</span><span class="es">Arquitectura</span></p>
+    <h2><span class="en">The fast path never blocks</span><span class="es">La ruta rápida nunca bloquea</span></h2>
+    <p class="muted" style="max-width:44rem;margin-bottom:1.2rem;">
+      <span class="en">Pure logic (wire parsing, matching, cache, framing) is ESP-IDF-free and unit-tested on a PC; hardware modules are thin glue. Slow work runs in dedicated tasks — the tcpip thread only ever enqueues.</span>
+      <span class="es">La lógica pura (parseo wire, coincidencia, caché, framing) no depende de ESP-IDF y se testea en PC; los módulos de hardware son pegamento fino. El trabajo lento va en tareas dedicadas — el hilo tcpip solo encola.</span>
+    </p>
+    <div class="diagram">
+      <svg viewBox="0 0 860 320" role="img" aria-label="ESPHole architecture data flow">
+        <defs>
+          <filter id="g" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <style>
+          .box{fill:var(--surface-2);stroke:var(--line);stroke-width:1.5;rx:10;}
+          .lbl{font-family:var(--mono);font-size:13px;fill:var(--fg);}
+          .sub{font-family:var(--mono);font-size:10.5px;fill:var(--muted);}
+          .edge{stroke:var(--muted);stroke-width:1.6;fill:none;marker-end:url(#ar);}
+          .edgeg{stroke:var(--green);stroke-width:1.8;fill:none;marker-end:url(#ar);filter:url(#g);}
+          .accent{stroke-width:2;}
+        </style>
+        <!-- edges -->
+        <path class="edge" d="M120,70 L188,70"/>
+        <path class="edgeg" d="M330,70 C360,70 360,44 392,44"/>
+        <path class="edge" d="M330,80 C360,80 360,104 392,104"/>
+        <path class="edge" d="M330,90 C360,120 360,164 392,164"/>
+        <path class="edge" d="M540,164 C575,164 575,120 610,120"/>
+        <path class="edge" d="M540,164 C575,164 575,212 610,212"/>
+        <path class="edge" d="M740,120 C766,120 766,158 788,166"/>
+        <path class="edge" d="M740,212 C766,212 766,184 788,180"/>
+        <path class="edge" d="M259,114 L257,236"/>
+        <!-- clients -->
+        <g><rect class="box" x="20" y="48" width="100" height="44"/><text class="lbl" x="70" y="68" text-anchor="middle">clients</text><text class="sub" x="70" y="82" text-anchor="middle">LAN</text></g>
+        <!-- net_dns hub -->
+        <g><rect class="box" x="188" y="42" width="142" height="72" style="stroke:var(--green)" filter="url(#g)"/><text class="lbl" x="259" y="70" text-anchor="middle" style="fill:var(--green)">net_dns</text><text class="sub" x="259" y="88" text-anchor="middle">fast path · tcpip</text></g>
+        <!-- three verdicts -->
+        <g><rect class="box" x="392" y="26" width="148" height="36" style="stroke:var(--green)"/><text class="lbl" x="466" y="48" text-anchor="middle">blocked → 0.0.0.0</text></g>
+        <g><rect class="box" x="392" y="86" width="148" height="36" style="stroke:var(--amber)"/><text class="lbl" x="466" y="108" text-anchor="middle">cache hit</text></g>
+        <g><rect class="box" x="392" y="146" width="148" height="36"/><text class="lbl" x="466" y="168" text-anchor="middle">miss → forward</text></g>
+        <!-- forwarders -->
+        <g><rect class="box" x="610" y="102" width="130" height="36"/><text class="lbl" x="675" y="124" text-anchor="middle">upstream (UDP)</text></g>
+        <g><rect class="box" x="610" y="194" width="130" height="36" style="stroke:var(--magenta)"/><text class="lbl" x="675" y="216" text-anchor="middle" style="fill:var(--magenta)">net_dot · DoT 853</text></g>
+        <!-- resolvers -->
+        <g><rect class="box" x="788" y="150" width="64" height="46"/><text class="sub" x="820" y="170" text-anchor="middle">upstream</text><text class="sub" x="820" y="183" text-anchor="middle">resolvers</text></g>
+        <!-- web + dhcp -->
+        <g><rect class="box" x="188" y="236" width="136" height="40"/><text class="lbl" x="256" y="256" text-anchor="middle">webapi</text><text class="sub" x="256" y="270" text-anchor="middle">HTTP :80</text></g>
+        <g><rect class="box" x="392" y="236" width="148" height="40" style="stroke-dasharray:4 3;stroke:var(--amber)"/><text class="lbl" x="466" y="256" text-anchor="middle" style="fill:var(--amber)">net_dhcp :67</text><text class="sub" x="466" y="270" text-anchor="middle">optional · ⚠ untested</text></g>
+      </svg>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker"><span class="en">Status</span><span class="es">Estado</span></p>
+    <h2><span class="en">Built and verified, spec by spec</span><span class="es">Construido y verificado, spec a spec</span></h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th class="mono">#</th><th><span class="en">Feature</span><span class="es">Funcionalidad</span></th><th><span class="en">Status</span><span class="es">Estado</span></th></tr></thead>
+        <tbody>
+          <tr><td class="mono">001</td><td><span class="en">DNS core</span><span class="es">Núcleo DNS</span></td><td><span class="st ok">✓ <span class="en">verified on hardware</span><span class="es">verificado en hardware</span></span></td></tr>
+          <tr><td class="mono">002</td><td><span class="en">Wi-Fi provisioning</span><span class="es">Aprovisionamiento Wi-Fi</span></td><td><span class="st ok">✓ <span class="en">implemented</span><span class="es">implementada</span></span></td></tr>
+          <tr><td class="mono">003</td><td><span class="en">HTTP API + web admin</span><span class="es">API HTTP + web</span></td><td><span class="st ok">✓ <span class="en">verified</span><span class="es">verificada</span></span></td></tr>
+          <tr><td class="mono">004</td><td><span class="en">Blocklists from URL</span><span class="es">Listas desde URL</span></td><td><span class="st ok">✓ <span class="en">verified</span><span class="es">verificada</span></span></td></tr>
+          <tr><td class="mono">005</td><td><span class="en">OTA + rollback</span><span class="es">OTA + rollback</span></td><td><span class="st ok">✓ <span class="en">rollback provoked</span><span class="es">rollback provocado</span></span></td></tr>
+          <tr class="warnrow"><td class="mono">006</td><td><span class="en">DHCP server (optional)</span><span class="es">Servidor DHCP (opcional)</span></td><td><span class="st warn">⚠ <span class="en">not tested end-to-end</span><span class="es">sin probar end-to-end</span></span></td></tr>
+          <tr><td class="mono">007</td><td><span class="en">Encrypted upstream (DoT)</span><span class="es">Upstream cifrado (DoT)</span></td><td><span class="st ok">✓ <span class="en">fail-closed verified</span><span class="es">fail-closed verificado</span></span></td></tr>
+          <tr><td class="mono">008</td><td><span class="en">Per-client stats</span><span class="es">Stats por cliente</span></td><td><span class="st ok">✓ <span class="en">verified</span><span class="es">verificada</span></span></td></tr>
+          <tr><td class="mono">009</td><td><span class="en">Bilingual UI (EN/ES)</span><span class="es">Interfaz bilingüe (EN/ES)</span></td><td><span class="st ok">✓ <span class="en">verified</span><span class="es">verificada</span></span></td></tr>
+          <tr><td class="mono">010</td><td><span class="en">UX/UI redesign</span><span class="es">Rediseño de UX/UI</span></td><td><span class="st ok">✓ <span class="en">verified</span><span class="es">verificada</span></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <b>⚠️ <span class="en">The DHCP server is experimental.</span><span class="es">El servidor DHCP es experimental.</span></b>
+      <span class="en"> Its pure logic is unit-tested and the API/UI exist, but it has not been exercised on a live network — a rogue DHCP server can hand out IPs and disrupt other devices. Validate it on an isolated LAN (with the router's own DHCP disabled) before relying on it.</span>
+      <span class="es"> Su lógica pura está testeada y la API/UI existen, pero no se ha ejercitado en una red real — un DHCP no controlado puede repartir IPs y perturbar otros dispositivos. Valídalo en una LAN aislada (con el DHCP del router desactivado) antes de confiar en él.</span>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker"><span class="en">Security</span><span class="es">Seguridad</span></p>
+    <h2><span class="en">Hostile input is the default assumption</span><span class="es">La entrada hostil es el supuesto por defecto</span></h2>
+    <ul class="clean">
+      <li><b><span class="en">Challenge-response login.</span><span class="es">Login desafío-respuesta.</span></b> <span class="en">The browser derives PBKDF2-HMAC-SHA256(password, salt, 30000) and answers HMAC(key, nonce) — the password never crosses the wire or gets stored in plaintext.</span><span class="es">El navegador deriva PBKDF2-HMAC-SHA256(contraseña, salt, 30000) y responde HMAC(clave, nonce) — la contraseña nunca viaja ni se guarda en claro.</span></li>
+      <li><b>DoT<span class="en"> connects by IP</span><span class="es"> conecta por IP</span>.</b> <span class="en">The resolver's certificate is still validated against its hostname (SNI), so encryption doesn't leak the resolver via a plaintext bootstrap lookup.</span><span class="es">El certificado del resolvedor se valida contra su hostname (SNI), así el cifrado no filtra el resolvedor por una resolución de arranque en claro.</span></li>
+      <li><b>HTTPS<span class="en"> by default</span><span class="es"> por defecto</span>.</b> <span class="en">OTA and blocklist downloads validate against a CA bundle; plaintext HTTP is a dev-only opt-in.</span><span class="es">Las descargas OTA y de listas validan contra un bundle de CAs; el HTTP en claro es opt-in solo de desarrollo.</span></li>
+      <li><b>textContent<span class="en">, never innerHTML</span><span class="es">, nunca innerHTML</span>.</b> <span class="en">Client-supplied strings (hostnames, IPs, lease names) are inserted as text.</span><span class="es">Las cadenas del cliente (hostnames, IPs, nombres de concesión) se insertan como texto.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <p class="kicker"><span class="en">Quickstart</span><span class="es">Inicio rápido</span></p>
+    <h2><span class="en">Build &amp; flash</span><span class="es">Compilar y flashear</span></h2>
+    <pre><span class="cm"># ESP-IDF v6.0.1 · ESP32-S3-N16R8</span>
+cd firmware
+idf.py set-target esp32s3
+idf.py build                     <span class="cm"># firmware + web UI (www.bin)</span>
+idf.py -p /dev/ttyACM0 flash monitor</pre>
+    <p class="muted" style="margin-top:.9rem;">
+      <span class="en">First boot starts a captive AP (<span style="font-family:var(--mono)">ESPHole-XXXX</span>, key on the serial console). Join it, set your Wi-Fi at <span style="font-family:var(--mono)">192.168.4.1</span>, then create your admin password on first visit. Full guide in the README (EN/ES).</span>
+      <span class="es">El primer arranque levanta un AP cautivo (<span style="font-family:var(--mono)">ESPHole-XXXX</span>, clave en la consola serie). Conéctate, configura tu Wi-Fi en <span style="font-family:var(--mono)">192.168.4.1</span> y crea tu contraseña de admin en la primera visita. Guía completa en el README (EN/ES).</span>
+    </p>
+  </section>
+
+  <section>
+    <p class="kicker"><span class="en">Roadmap</span><span class="es">Próximos pasos</span></p>
+    <h2><span class="en">Where it's headed</span><span class="es">Hacia dónde va</span></h2>
+    <div class="chips">
+      <span class="chip"><span class="en">Validate DHCP on an isolated LAN</span><span class="es">Validar el DHCP en LAN aislada</span></span>
+      <span class="chip">DoH</span>
+      <span class="chip"><span class="en">DoT/DoH server for clients</span><span class="es">Servidor DoT/DoH para clientes</span></span>
+      <span class="chip"><span class="en">Historical graphs</span><span class="es">Gráficas históricas</span></span>
+      <span class="chip"><span class="en">Per-client policies</span><span class="es">Políticas por cliente</span></span>
+      <span class="chip"><span class="en">Signed OTA images</span><span class="es">OTA firmado</span></span>
+      <span class="chip"><span class="en">More languages</span><span class="es">Más idiomas</span></span>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap">
+    <p class="mono">🕳️ ESPHole — <span class="en">MIT licensed. Built with the Spec Kit methodology: constitution → spec → plan → TDD → on-hardware verification.</span><span class="es">Licencia MIT. Construido con la metodología Spec Kit: constitución → spec → plan → TDD → verificación en hardware.</span></p>
+    <p><span class="en">The block percentage shown is illustrative.</span><span class="es">El porcentaje de bloqueo mostrado es ilustrativo.</span></p>
+  </div>
+</footer>
+
+<script>
+  (function(){
+    var TARGET = 34; // % ilustrativo del anillo
+    // idioma
+    document.body.classList.add("lang-en");
+    document.getElementById("lang").addEventListener("click", function(e){
+      var b = e.target.closest("[data-l]"); if(!b) return;
+      var l = b.getAttribute("data-l");
+      document.body.classList.toggle("lang-es", l==="es");
+      document.body.classList.toggle("lang-en", l==="en");
+      document.documentElement.lang = l;
+      this.querySelectorAll("button").forEach(function(x){ x.classList.toggle("on", x===b); });
+    });
+    // tema
+    function eff(){ var t=localStorage.getItem("esphole_site_theme");
+      if(t==="light"||t==="dark") return t;
+      return (window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches)?"light":"dark"; }
+    function markTheme(){ var b=document.querySelector("[data-theme-btn]"); if(b) b.textContent = eff()==="dark"?"☀":"🌙"; }
+    function applyTheme(m){ var r=document.documentElement;
+      if(m==="light"||m==="dark"){ r.setAttribute("data-theme",m); localStorage.setItem("esphole_site_theme",m); }
+      else { r.removeAttribute("data-theme"); localStorage.removeItem("esphole_site_theme"); }
+      markTheme(); }
+    applyTheme(localStorage.getItem("esphole_site_theme")||"auto");
+    document.getElementById("theme").addEventListener("click", function(){
+      applyTheme(eff()==="dark"?"light":"dark"); });
+    if(window.matchMedia) matchMedia("(prefers-color-scheme: light)").addEventListener("change", markTheme);
+    // animar el anillo al entrar en vista
+    var ring=document.getElementById("ring"), pct=document.getElementById("ringpct");
+    var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function fill(){ ring.style.setProperty("--pct", TARGET);
+      if(reduce){ pct.textContent=TARGET+"%"; return; }
+      var t0=null; (function step(ts){ t0=t0||ts; var k=Math.min(1,(ts-t0)/1400);
+        pct.textContent=Math.round(TARGET*(k<1?(1-Math.pow(1-k,3)):1))+"%";
+        if(k<1) requestAnimationFrame(step); })(performance.now()); }
+    if("IntersectionObserver" in window){
+      var io=new IntersectionObserver(function(en){ en.forEach(function(x){ if(x.isIntersecting){ fill(); io.disconnect(); }});});
+      io.observe(ring);
+    } else { fill(); }
+  })();
+</script>
+</body>
+</html>
