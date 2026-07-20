@@ -1,5 +1,11 @@
 # 🕳️ ESPHole
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-39ff14)](LICENSE)
+[![Platform: ESP32-S3](https://img.shields.io/badge/Platform-ESP32--S3-22d3ee)](https://www.espressif.com/en/products/socs/esp32-s3)
+[![ESP-IDF v6.0.1](https://img.shields.io/badge/ESP--IDF-v6.0.1-E7352C?logo=espressif&logoColor=white)](https://github.com/espressif/esp-idf)
+[![Language: C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)](#)
+[![Live page](https://img.shields.io/badge/Live-GitHub_Pages-ff2e97)](https://aguilerasmiguel.github.io/esphole/)
+
 A Pi-hole–style **DNS sinkhole** (network-wide ad & tracker blocker) ported to the
 **ESP32-S3**. Every DNS query on your LAN passes through it: blocklisted domains die with a
 black-hole answer (`0.0.0.0` / `::`), everything else is forwarded to an upstream resolver and
